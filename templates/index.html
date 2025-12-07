@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JalScan Secure Portal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto:wght@300;400&display=swap" rel="stylesheet">
+    <style>
+        /* (Styles kept same for brevity, they were perfect) */
+        :root { --bg: #050b14; --card: #0a192f; --cyan: #64ffda; --text: #ccd6f6; --err: #ff6b6b; --ok: #00ff88; }
+        body { margin:0; padding:10px; font-family:'Roboto'; background:var(--bg); color:var(--text); display:flex; justify-content:center; align-items:center; min-height:100vh; background-image: radial-gradient(circle at 50% 50%, #112240 0%, #050b14 70%); }
+        .container { background:var(--card); padding:1.5rem; border-radius:15px; text-align:center; width:100%; max-width:450px; border:1px solid #233554; position:relative; }
+        h1 { font-family:'Orbitron'; color:var(--cyan); margin-bottom:1rem; font-size:1.5rem; }
+
+        input { width:100%; padding:12px; background:#112240; border:1px solid #233554; color:var(--cyan); font-family:'Orbitron'; margin-bottom:10px; border-radius:5px; box-sizing:border-box; }
+        .btn { background:transparent; color:var(--cyan); border:2px solid var(--cyan); padding:12px; width:100%; font-family:'Orbitron'; border-radius:8px; cursor:pointer; text-transform:uppercase; margin-top:5px; transition:0.2s; }
+        .btn:hover { background:rgba(100,255,218,0.1); }
+
+        #jalVisionSection { display: none; margin-top: 20px; border-top: 1px solid #233554; padding-top: 20px; }
+        .camera-box { position:relative; width:100%; height:300px; background:#000; border-radius:10px; overflow:hidden; margin-bottom:15px; border:2px solid #233554; }
+        video { width:100%; height:100%; object-fit:cover; }
+        #captureBtn { position:absolute; bottom:15px; left:50%; transform:translateX(-50%); background:rgba(255,0,0,0.8); width:60px; height:60px; border-radius:50%; border:3px solid #fff; cursor:pointer; z-index:10; }
+
+        #loginModal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:100; justify-content:center; align-items:center; }
+        .modal-content { background:var(--card); padding:2rem; border-radius:10px; border:1px solid var(--cyan); width:300px; text-align:center; }
+
+        .ai-result { display:none; background:#112240; padding:15px; border-radius:8px; margin-bottom:20px; text-align:left; border-left:3px solid var(--cyan); }
+        .tag { padding:3px 8px; border-radius:4px; font-size:0.8rem; font-weight:bold; }
+        .tag-safe { color:var(--ok); border:1px solid var(--ok); }
+        .tag-danger { color:var(--err); border:1px solid var(--err); }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>JalScan Portal</h1>
+
+        <!-- GENERAL CALL -->
+        <input type="tel" id="phoneNumber" placeholder="Your Phone (+91...)" value="+91">
+        <button class="btn" onclick="makeCall()">📞 Initiate Call</button>
+
+        <hr style="border:0; border-top:1px solid #233554; margin: 20px 0;">
+
+        <!-- AGENT LOGIN -->
+        <button class="btn" id="loginBtn" onclick="openLogin()">🔐 Field Agent Login</button>
+
+        <!-- JALVISION -->
+        <div id="jalVisionSection">
+            <h3 style="color:var(--ok); font-family:'Orbitron'">JalVision Active</h3>
+            <div class="camera-box">
+                <video id="video" autoplay playsinline muted></video>
+                <button id="captureBtn" onclick="captureImage()"></button>
+            </div>
+            <div id="visionStatus" style="margin-top:10px; color:#8892b0;">Scan Site for Verification</div>
+
+            <div id="aiResult" class="ai-result">
+                <p><strong>Status:</strong> <span id="resStatus"></span></p>
+                <p><strong>Confidence:</strong> <span id="resConf"></span></p>
+                <!-- NOTE: The 'true' argument tells the function this is an AGENT call with context -->
+                <button class="btn" onclick="makeCall(true)" style="margin-top:10px; border-color:var(--ok); color:var(--ok);">✅ Connect Secure Agent</button>
+            </div>
+        </div>
+
+        <div id="callStatus" style="margin-top:15px; font-size:0.9rem;"></div>
+    </div>
+
+    <!-- LOGIN MODAL -->
+    <div id="loginModal">
+        <div class="modal-content">
+            <h2 style="color:var(--cyan); font-family:'Orbitron'">Agent Access</h2>
+            <input type="text" id="user" placeholder="Username">
+            <input type="password" id="pass" placeholder="Password">
+            <button class="btn" onclick="checkLogin()">Login</button>
+            <button class="btn" style="border-color:var(--err); color:var(--err); margin-top:10px;" onclick="closeLogin()">Cancel</button>
+        </div>
+    </div>
+
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        let latestAIData = null;
+
+        function openLogin() { document.getElementById('loginModal').style.display = 'flex'; }
+        function closeLogin() { document.getElementById('loginModal').style.display = 'none'; }
+
+        function checkLogin() {
+            const u = document.getElementById('user').value;
+            const p = document.getElementById('pass').value;
+            if (u === 'fieldmax111' && p === 'varunmax7') {
+                closeLogin();
+                document.getElementById('loginBtn').style.display = 'none';
+                document.getElementById('jalVisionSection').style.display = 'block';
+                startCamera();
+            } else {
+                alert("Invalid Credentials");
+            }
+        }
+
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                video.srcObject = stream;
+            } catch (err) { alert("Camera Error"); }
+        }
+
+        function captureImage() {
+            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            document.getElementById('visionStatus').innerText = "Analyzing...";
+
+            canvas.toBlob(async (blob) => {
+                const formData = new FormData();
+                formData.append('image', blob, 'scan.jpg');
+                const res = await fetch('/analyze_image', { method: 'POST', body: formData });
+                const data = await res.json();
+                latestAIData = data;
+
+                document.getElementById('aiResult').style.display = 'block';
+                document.getElementById('visionStatus').innerText = "Analysis Complete";
+                const stat = document.getElementById('resStatus');
+                stat.innerText = data.status;
+                stat.className = (data.status.includes('Tamper') || data.confidence < 70) ? 'tag tag-danger' : 'tag tag-safe';
+                document.getElementById('resConf').innerText = data.confidence + "%";
+            }, 'image/jpeg');
+        }
+
+        async function makeCall(isAgent = false) {
+            const num = document.getElementById('phoneNumber').value.trim();
+            const statusDiv = document.getElementById('callStatus');
+            const callBtn = isAgent ? event.target : document.querySelector('.btn[onclick="makeCall()"]');
+
+            if(num.length < 10) { 
+                statusDiv.innerText = "Invalid Number"; 
+                statusDiv.style.color = 'var(--err)';
+                return; 
+            }
+            
+            statusDiv.innerText = "Calling...";
+            statusDiv.style.color = 'var(--cyan)';
+            if(callBtn) {
+                callBtn.disabled = true;
+                callBtn.style.opacity = '0.6';
+                callBtn.innerHTML = isAgent ? '📞 Calling...' : '📞 Calling...';
+            }
+
+            const payload = { phone_number: num };
+
+            if (isAgent && latestAIData) { payload.ai_data = latestAIData; }
+
+            try {
+                const res = await fetch('/initiate_call', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                const d = await res.json();
+                
+                if(res.ok) {
+                    statusDiv.innerText = "Call Sent!";
+                    statusDiv.style.color = 'var(--ok)';
+                    if(callBtn) {
+                        callBtn.innerHTML = isAgent ? '✅ Call Sent!' : '✅ Call Sent!';
+                    }
+                    setTimeout(() => {
+                        statusDiv.innerText = "";
+                        if(callBtn) {
+                            callBtn.disabled = false;
+                            callBtn.style.opacity = '1';
+                            callBtn.innerHTML = isAgent ? '✅ Connect Secure Agent' : '📞 Initiate Call';
+                        }
+                    }, 3000);
+                } else {
+                    statusDiv.innerText = "Error: " + d.message;
+                    statusDiv.style.color = 'var(--err)';
+                    if(callBtn) {
+                        callBtn.disabled = false;
+                        callBtn.style.opacity = '1';
+                        callBtn.innerHTML = isAgent ? '✅ Connect Secure Agent' : '📞 Initiate Call';
+                    }
+                }
+            } catch(err) {
+                statusDiv.innerText = "Connection Error";
+                statusDiv.style.color = 'var(--err)';
+                if(callBtn) {
+                    callBtn.disabled = false;
+                    callBtn.style.opacity = '1';
+                    callBtn.innerHTML = isAgent ? '✅ Connect Secure Agent' : '📞 Initiate Call';
+                }
+            }
+        }
+    </script>
+</body>
+</html>
